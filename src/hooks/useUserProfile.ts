@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { DataState, UserProfile } from '@/types/userData';
 import { useDropboxAuth } from '@/hooks/useDropboxAuth';
@@ -15,7 +14,7 @@ interface UseUserProfileReturn {
 
 export const useUserProfile = (): UseUserProfileReturn => {
   const { toast } = useToast();
-  const { authState, dropboxService } = useDropboxAuth();
+  const { authState, sessionService } = useDropboxAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [state, setState] = useState<DataState>(DataState.IDLE);
   const serviceRef = useRef(UserDataService.getInstance());
@@ -23,11 +22,11 @@ export const useUserProfile = (): UseUserProfileReturn => {
 
   // Configurar el servicio UNA SOLA VEZ cuando esté disponible
   useEffect(() => {
-    if (dropboxService && !isInitialized.current) {
-      serviceRef.current.setDropboxService(dropboxService);
+    if (sessionService && !isInitialized.current) {
+      serviceRef.current.setDropboxService(sessionService);
       isInitialized.current = true;
     }
-  }, [dropboxService]);
+  }, [sessionService]);
 
   // Suscribirse a eventos del servicio
   useEffect(() => {
