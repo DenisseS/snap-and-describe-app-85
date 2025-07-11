@@ -1,10 +1,9 @@
-
 import { DataState, UserProfile } from '@/types/userData';
 import SessionService, { UserInfo } from './SessionService';
 import { UserJsonData } from '@/types/dropbox-auth';
+import { USER_PROFILE_EVENTS, UserDataEvent } from '@/constants/events';
 
 // Tipos para el sistema de eventos
-type UserDataEvent = 'profile-updated' | 'profile-sync-start' | 'profile-sync-end' | 'profile-error';
 type EventListener = (data?: any) => void;
 
 class UserDataService {
@@ -18,11 +17,11 @@ class UserDataService {
   private eventListeners: Map<UserDataEvent, Set<EventListener>> = new Map();
 
   private constructor() {
-    // Inicializar event listeners
-    this.eventListeners.set('profile-updated', new Set());
-    this.eventListeners.set('profile-sync-start', new Set());
-    this.eventListeners.set('profile-sync-end', new Set());
-    this.eventListeners.set('profile-error', new Set());
+    // Inicializar event listeners usando constantes
+    this.eventListeners.set(USER_PROFILE_EVENTS.UPDATED, new Set());
+    this.eventListeners.set(USER_PROFILE_EVENTS.SYNC_START, new Set());
+    this.eventListeners.set(USER_PROFILE_EVENTS.SYNC_END, new Set());
+    this.eventListeners.set(USER_PROFILE_EVENTS.ERROR, new Set());
   }
 
   public static getInstance(): UserDataService {
@@ -175,7 +174,7 @@ class UserDataService {
     console.log('📊 UserDataService: Updating profile...', profile);
     
     try {
-      this.emitEvent('profile-sync-start');
+      this.emitEvent(USER_PROFILE_EVENTS.SYNC_START);
       
       // Actualizar usando getUserInfo/updateUserInfo
       const userInfo: UserInfo = { 
@@ -188,9 +187,9 @@ class UserDataService {
       
       if (success) {
         // Emitir evento de actualización optimista
-        this.emitEvent('profile-updated', profile);
+        this.emitEvent(USER_PROFILE_EVENTS.UPDATED, profile);
         onUpdate?.(profile);
-        this.emitEvent('profile-sync-end');
+        this.emitEvent(USER_PROFILE_EVENTS.SYNC_END);
         console.log('📊 UserDataService: Profile updated successfully');
         
         return { success: true, state: DataState.READY };
@@ -219,14 +218,14 @@ class UserDataService {
           favorites: realData.favorites || {}
         };
         
-        this.emitEvent('profile-updated', realProfile);
-        this.emitEvent('profile-error', 'Sync failed, rolled back to server data');
+        this.emitEvent(USER_PROFILE_EVENTS.UPDATED, realProfile);
+        this.emitEvent(USER_PROFILE_EVENTS.ERROR, 'Sync failed, rolled back to server data');
         onUpdate?.(realProfile);
         console.log('📊 UserDataService: Rollback completed');
       }
     } catch (pullError) {
       console.error('📊 UserDataService: Error during rollback:', pullError);
-      this.emitEvent('profile-error', pullError);
+      this.emitEvent(USER_PROFILE_EVENTS.ERROR, pullError);
     }
   }
 

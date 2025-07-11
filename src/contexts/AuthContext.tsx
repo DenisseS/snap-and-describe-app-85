@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import SessionService, { UserInfo } from '../services/SessionService';
 import UserDataService from '../services/UserDataService';
-import { AuthState, AuthStateData } from '../types/auth';
+import { AuthState } from '../types/auth';
 import { useUserCache } from '../hooks/useUserCache';
 import { useToast } from '@/hooks/use-toast';
 import { useTranslation } from 'react-i18next';

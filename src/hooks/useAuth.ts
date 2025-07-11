@@ -1,6 +1,6 @@
 
 import { useAuth as useAuthContext } from '../contexts/AuthContext';
 
-export const useDropboxAuth = () => {
+export const useAuth = () => {
   return useAuthContext();
 };

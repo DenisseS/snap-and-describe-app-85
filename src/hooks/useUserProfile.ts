@@ -1,9 +1,10 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { DataState, UserProfile } from '@/types/userData';
-import { useDropboxAuth } from '@/hooks/useDropboxAuth';
+import { useAuth } from '@/hooks/useAuth';
 import { AuthState } from '@/types/auth';
 import { useToast } from '@/hooks/use-toast';
 import UserDataService from '@/services/UserDataService';
+import { USER_PROFILE_EVENTS } from '@/constants/events';
 
 interface UseUserProfileReturn {
   profile: UserProfile | null;
@@ -14,7 +15,7 @@ interface UseUserProfileReturn {
 
 export const useUserProfile = (): UseUserProfileReturn => {
   const { toast } = useToast();
-  const { authState, sessionService } = useDropboxAuth();
+  const { authState, sessionService } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [state, setState] = useState<DataState>(DataState.IDLE);
   const serviceRef = useRef(UserDataService.getInstance());
@@ -28,7 +29,7 @@ export const useUserProfile = (): UseUserProfileReturn => {
     }
   }, [sessionService]);
 
-  // Suscribirse a eventos del servicio
+  // Suscribirse a eventos del servicio usando constantes
   useEffect(() => {
     const service = serviceRef.current;
     
@@ -53,18 +54,18 @@ export const useUserProfile = (): UseUserProfileReturn => {
       setState(DataState.ERROR);
     };
 
-    // Suscribirse a eventos
-    service.addEventListener('profile-updated', handleProfileUpdated);
-    service.addEventListener('profile-sync-start', handleSyncStart);
-    service.addEventListener('profile-sync-end', handleSyncEnd);
-    service.addEventListener('profile-error', handleError);
+    // Suscribirse a eventos usando constantes
+    service.addEventListener(USER_PROFILE_EVENTS.UPDATED, handleProfileUpdated);
+    service.addEventListener(USER_PROFILE_EVENTS.SYNC_START, handleSyncStart);
+    service.addEventListener(USER_PROFILE_EVENTS.SYNC_END, handleSyncEnd);
+    service.addEventListener(USER_PROFILE_EVENTS.ERROR, handleError);
 
     return () => {
       // Desuscribirse al desmontar
-      service.removeEventListener('profile-updated', handleProfileUpdated);
-      service.removeEventListener('profile-sync-start', handleSyncStart);
-      service.removeEventListener('profile-sync-end', handleSyncEnd);
-      service.removeEventListener('profile-error', handleError);
+      service.removeEventListener(USER_PROFILE_EVENTS.UPDATED, handleProfileUpdated);
+      service.removeEventListener(USER_PROFILE_EVENTS.SYNC_START, handleSyncStart);
+      service.removeEventListener(USER_PROFILE_EVENTS.SYNC_END, handleSyncEnd);
+      service.removeEventListener(USER_PROFILE_EVENTS.ERROR, handleError);
     };
   }, []);
 
