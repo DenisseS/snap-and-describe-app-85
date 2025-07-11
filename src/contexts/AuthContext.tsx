@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import SessionService, { UserInfo } from '../services/SessionService';
 import UserDataService from '../services/UserDataService';
@@ -18,7 +19,6 @@ interface AuthContextType {
   // Acciones
   login: () => Promise<void>;
   logout: () => Promise<void>;
-  updateUserInfo: (userInfo: UserInfo) => Promise<boolean>;
   refreshUserInfo: () => Promise<void>;
 }
 
@@ -152,48 +152,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   }, [clearUserCache, getUserCacheInfo]);
 
-  const updateUserInfo = useCallback(async (newUserInfo: UserInfo): Promise<boolean> => {
-    try {
-      console.log('🔐 Auth: Updating user info...', newUserInfo);
-      const success = await userDataService.updateUserInfo(newUserInfo);
-      if (success) {
-        setUserInfo(newUserInfo);
-        console.log('🔐 Auth: User info updated successfully');
-      } else {
-        // Si falla la actualización, verificar si el usuario fue deslogueado
-        if (!sessionService.isAuthenticated()) {
-          console.log('🔐 Auth: User was logged out during update');
-          setUserInfo(null);
-          setAuthState(AuthState.IDLE);
-          
-          toast({
-            title: t('connectionError'),
-            description: t('authenticationFailed') + '. ' + t('tryAgain'),
-            variant: "destructive",
-          });
-        }
-      }
-      return success;
-    } catch (error) {
-      console.error('🔐 Auth: Error updating user info:', error);
-      
-      // Verificar si fue por desautenticación
-      if (!sessionService.isAuthenticated()) {
-        console.log('🔐 Auth: User was logged out during update error');
-        setUserInfo(null);
-        setAuthState(AuthState.IDLE);
-        
-        toast({
-          title: t('connectionError'),
-          description: t('authenticationFailed') + '. ' + t('tryAgain'),
-          variant: "destructive",
-        });
-      }
-      
-      return false;
-    }
-  }, [toast, t]);
-
   // Inicialización simplificada
   useEffect(() => {
     console.log('🔐 Auth: Initializing authentication state...');
@@ -212,7 +170,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // Acciones
     login,
     logout,
-    updateUserInfo,
     refreshUserInfo,
   };
 

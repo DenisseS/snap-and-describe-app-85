@@ -1,5 +1,6 @@
+
 import { DataState, UserProfile } from '@/types/userData';
-import SessionService, { UserInfo as DropboxUserInfo } from './SessionService';
+import SessionService, { UserInfo } from './SessionService';
 import { UserJsonData } from '@/types/dropbox-auth';
 
 // Tipos para el sistema de eventos
@@ -59,7 +60,7 @@ class UserDataService {
   }
 
   // Método para obtener información del usuario
-  public async getUserInfo(): Promise<DropboxUserInfo | null> {
+  public async getUserInfo(): Promise<UserInfo | null> {
     console.log('📊 UserDataService: Getting user info...');
     
     if (!this.sessionService) {
@@ -80,7 +81,7 @@ class UserDataService {
   }
 
   // Método para actualizar información del usuario
-  public async updateUserInfo(userInfo: DropboxUserInfo): Promise<boolean> {
+  public async updateUserInfo(userInfo: UserInfo): Promise<boolean> {
     console.log('📊 UserDataService: Updating user info...', userInfo);
     
     if (!this.sessionService) {
@@ -124,7 +125,7 @@ class UserDataService {
   }
 
   // Transformar UserJsonData a UserInfo
-  private transformUserJsonToUserInfo(data: UserJsonData): DropboxUserInfo {
+  private transformUserJsonToUserInfo(data: UserJsonData): UserInfo {
     return {
       nombre: data.profile.name,
       allergies: data.allergies || {},
@@ -177,13 +178,13 @@ class UserDataService {
       this.emitEvent('profile-sync-start');
       
       // Actualizar usando getUserInfo/updateUserInfo
-      const dropboxUserInfo: DropboxUserInfo = { 
+      const userInfo: UserInfo = { 
         nombre: profile.nombre,
         allergies: profile.allergies,
         favorites: profile.favorites
       };
       
-      const success = await this.updateUserInfo(dropboxUserInfo);
+      const success = await this.updateUserInfo(userInfo);
       
       if (success) {
         // Emitir evento de actualización optimista
