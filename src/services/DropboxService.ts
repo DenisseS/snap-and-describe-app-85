@@ -1,26 +1,30 @@
 
-import { DropboxConfig, UserInfo } from '../types/dropbox-auth';
+import { DropboxConfig, UserInfo, UserJsonData, FileMetadata } from '../types/dropbox-auth';
 import { TokenManager } from './dropbox/TokenManager';
 import { DropboxAPI } from './dropbox/DropboxAPI';
 import { DropboxAuthService } from './dropbox/DropboxAuthService';
-import { DropboxUserService } from './dropbox/DropboxUserService';
+import { DropboxFileManagerService } from './dropbox/DropboxFileManagerService';
 
 class DropboxService {
   private tokenManager: TokenManager;
   private api: DropboxAPI;
   private authService: DropboxAuthService;
-  private userService: DropboxUserService;
+  private fileManager: DropboxFileManagerService;
+
+  // Constantes para archivos
+  private static readonly FILES = {
+    USER_JSON: '/user.json'
+  };
 
   constructor(private config: DropboxConfig) {
     this.tokenManager = new TokenManager();
     this.api = new DropboxAPI(config);
     this.authService = new DropboxAuthService(config);
-    this.userService = new DropboxUserService(this.api);
+    this.fileManager = new DropboxFileManagerService(this.api);
   }
 
   // Interceptor: asegurar token válido antes de cada llamada
   private async ensureValidToken(): Promise<string | null> {
-    // Si no hay token, no está autenticado
     if (!this.tokenManager.hasToken()) {
       return null;
     }
@@ -28,12 +32,10 @@ class DropboxService {
     const tokenData = this.tokenManager.getToken();
     if (!tokenData) return null;
 
-    // Si el token no está próximo a caducar, usarlo
     if (!this.tokenManager.isTokenExpiringSoon()) {
       return tokenData.access_token;
     }
 
-    // Intentar renovar el token
     console.log('🔐 Token expiring soon, attempting refresh...');
     
     if (!tokenData.refresh_token) {
@@ -51,10 +53,243 @@ class DropboxService {
       return newTokenData.access_token;
     }
 
-    // Si falló la renovación, hacer logout y registrar el evento
     console.error('🔐 FORCED LOGOUT - Token refresh failed - User needs to re-authenticate');
     this.logout();
     return null;
+  }
+
+  // Generar clave de cache basada en el archivo
+  private getCacheKey(filePath: string): string {
+    return `DROPBOX_FILE_${filePath.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}`;
+  }
+
+  private getMetadataKey(filePath: string): string {
+    return `${this.getCacheKey(filePath)}_META`;
+  }
+
+  // Cache genérico con metadata
+  private getCachedFile(filePath: string): { data: any | null; metadata: FileMetadata | null } {
+    try {
+      const dataKey = this.getCacheKey(filePath);
+      const metaKey = this.getMetadataKey(filePath);
+      
+      const cachedData = localStorage.getItem(dataKey);
+      const cachedMeta = localStorage.getItem(metaKey);
+      
+      const data = cachedData ? JSON.parse(cachedData) : null;
+      const metadata = cachedMeta ? JSON.parse(cachedMeta) as FileMetadata : null;
+      
+      return { data, metadata };
+    } catch (error) {
+      console.error(`Error reading cached file ${filePath}:`, error);
+      return { data: null, metadata: null };
+    }
+  }
+
+  private setCachedFile(filePath: string, data: any, metadata: FileMetadata): void {
+    try {
+      const dataKey = this.getCacheKey(filePath);
+      const metaKey = this.getMetadataKey(filePath);
+      
+      localStorage.setItem(dataKey, JSON.stringify(data));
+      localStorage.setItem(metaKey, JSON.stringify(metadata));
+    } catch (error) {
+      console.error(`Error caching file ${filePath}:`, error);
+    }
+  }
+
+  // Verificar si necesita sync basado en metadata
+  private async checkNeedsSync(filePath: string, currentMetadata: FileMetadata | null): Promise<boolean> {
+    if (!this.isAuthenticated() || !currentMetadata) {
+      return true;
+    }
+
+    try {
+      const accessToken = await this.ensureValidToken();
+      if (!accessToken) return false;
+
+      const remoteMetadata = await this.fileManager.getFileMetadata(accessToken, filePath);
+      if (!remoteMetadata) return false;
+      
+      return remoteMetadata.client_modified !== currentMetadata.client_modified;
+    } catch (error) {
+      console.error(`Error checking sync for ${filePath}:`, error);
+      return false;
+    }
+  }
+
+  // Método genérico: Cache-first con sync en background
+  public async getFile(filePath: string): Promise<{
+    data: any | null;
+    fromCache: boolean;
+  }> {
+    console.log(`📁 DropboxService: Getting file ${filePath}...`);
+    
+    // 1. Obtener del cache inmediatamente
+    const { data: cachedData, metadata } = this.getCachedFile(filePath);
+    
+    if (cachedData) {
+      console.log(`📁 DropboxService: File ${filePath} found in cache`);
+      
+      // Verificar sync en background si está autenticado
+      if (this.isAuthenticated()) {
+        this.syncInBackground(filePath, metadata);
+      }
+      
+      return {
+        data: cachedData,
+        fromCache: true
+      };
+    }
+
+    // 2. Si no hay cache, cargar de remoto
+    if (!this.isAuthenticated()) {
+      console.log(`📁 DropboxService: Not authenticated, returning null for ${filePath}`);
+      return {
+        data: null,
+        fromCache: false
+      };
+    }
+
+    try {
+      console.log(`📁 DropboxService: Loading ${filePath} from Dropbox...`);
+      const accessToken = await this.ensureValidToken();
+      if (!accessToken) {
+        return { data: null, fromCache: false };
+      }
+
+      const remoteData = await this.fileManager.getFile(accessToken, filePath);
+      
+      if (remoteData) {
+        const fileMetadata = await this.fileManager.getFileMetadata(accessToken, filePath);
+        const newMetadata: FileMetadata = {
+          client_modified: fileMetadata?.client_modified || new Date().toISOString(),
+          last_sync: new Date().toISOString(),
+          sync_status: 'synced'
+        };
+        
+        this.setCachedFile(filePath, remoteData, newMetadata);
+        console.log(`📁 DropboxService: ${filePath} loaded and cached`);
+        
+        return {
+          data: remoteData,
+          fromCache: false
+        };
+      }
+    } catch (error) {
+      console.error(`📁 DropboxService: Error fetching ${filePath}:`, error);
+    }
+
+    return {
+      data: null,
+      fromCache: false
+    };
+  }
+
+  // Sync en background sin bloquear UI
+  private async syncInBackground(filePath: string, currentMetadata: FileMetadata | null): Promise<void> {
+    try {
+      const needsSync = await this.checkNeedsSync(filePath, currentMetadata);
+      
+      if (needsSync) {
+        console.log(`📁 DropboxService: Background sync needed for ${filePath}, updating...`);
+        
+        const accessToken = await this.ensureValidToken();
+        if (!accessToken) return;
+
+        const remoteData = await this.fileManager.getFile(accessToken, filePath);
+        
+        if (remoteData) {
+          const fileMetadata = await this.fileManager.getFileMetadata(accessToken, filePath);
+          const newMetadata: FileMetadata = {
+            client_modified: fileMetadata?.client_modified || new Date().toISOString(),
+            last_sync: new Date().toISOString(),
+            sync_status: 'synced'
+          };
+          
+          this.setCachedFile(filePath, remoteData, newMetadata);
+          console.log(`📁 DropboxService: Background sync completed for ${filePath}`);
+        }
+      }
+    } catch (error) {
+      console.error(`📁 DropboxService: Background sync error for ${filePath}:`, error);
+    }
+  }
+
+  // Update optimista genérico
+  public async updateFile(filePath: string, data: any, onUpdate?: (data: any) => void): Promise<{
+    success: boolean;
+  }> {
+    console.log(`📁 DropboxService: Updating file ${filePath}...`, data);
+    
+    // 1. Update optimista del cache inmediatamente
+    const optimisticMetadata: FileMetadata = {
+      client_modified: new Date().toISOString(),
+      last_sync: new Date().toISOString(),
+      sync_status: 'pending'
+    };
+    
+    this.setCachedFile(filePath, data, optimisticMetadata);
+    onUpdate?.(data);
+    
+    // 2. Sync en background con Dropbox
+    if (!this.isAuthenticated()) {
+      return { success: false };
+    }
+
+    try {
+      const accessToken = await this.ensureValidToken();
+      if (!accessToken) {
+        return { success: false };
+      }
+
+      const success = await this.fileManager.updateFile(accessToken, filePath, data);
+      
+      if (success) {
+        const syncedMetadata: FileMetadata = {
+          ...optimisticMetadata,
+          sync_status: 'synced'
+        };
+        this.setCachedFile(filePath, data, syncedMetadata);
+        console.log(`📁 DropboxService: ${filePath} updated successfully`);
+        
+        return { success: true };
+      } else {
+        await this.handleSyncError(filePath, onUpdate);
+        return { success: false };
+      }
+    } catch (error) {
+      console.error(`📁 DropboxService: Error updating ${filePath}:`, error);
+      await this.handleSyncError(filePath, onUpdate);
+      return { success: false };
+    }
+  }
+
+  // Manejo de errores con rollback
+  private async handleSyncError(filePath: string, onUpdate?: (data: any) => void): Promise<void> {
+    console.log(`📁 DropboxService: Sync failed for ${filePath}, pulling real data...`);
+    
+    try {
+      const accessToken = await this.ensureValidToken();
+      if (!accessToken) return;
+
+      const realData = await this.fileManager.getFile(accessToken, filePath);
+      
+      if (realData) {
+        const fileMetadata = await this.fileManager.getFileMetadata(accessToken, filePath);
+        const errorMetadata: FileMetadata = {
+          client_modified: fileMetadata?.client_modified || new Date().toISOString(),
+          last_sync: new Date().toISOString(),
+          sync_status: 'error'
+        };
+        
+        this.setCachedFile(filePath, realData, errorMetadata);
+        onUpdate?.(realData);
+        console.log(`📁 DropboxService: Rollback completed for ${filePath}`);
+      }
+    } catch (pullError) {
+      console.error(`📁 DropboxService: Error during rollback for ${filePath}:`, pullError);
+    }
   }
 
   // Start OAuth flow
@@ -92,44 +327,65 @@ class DropboxService {
     this.tokenManager.clearToken();
   }
 
-  // Read user info from JSON
+  // Método específico para user info (wrapper del genérico)
   async getUserInfo(): Promise<UserInfo | null> {
-    const accessToken = await this.ensureValidToken();
-    if (!accessToken) {
-      throw new Error('Not authenticated');
+    const result = await this.getFile(DropboxService.FILES.USER_JSON);
+    
+    if (!result.data) {
+      // Si no hay archivo, crear uno por defecto
+      if (this.isAuthenticated()) {
+        await this.createDefaultUserFile();
+        const newResult = await this.getFile(DropboxService.FILES.USER_JSON);
+        return this.transformUserJsonToUserInfo(newResult.data);
+      }
+      return null;
     }
 
-    return this.userService.getUserInfo(accessToken);
+    return this.transformUserJsonToUserInfo(result.data);
   }
 
-  // Update user info - now supports updating any section of the JSON
-  async updateUserInfo(userInfo: UserInfo, allergies?: Record<string, { avoid: boolean }>, favorites?: Record<string, { status: 'heart' | 'thumb-down' }>): Promise<boolean> {
-    const accessToken = await this.ensureValidToken();
-    if (!accessToken) {
-      throw new Error('Not authenticated');
-    }
+  // Método específico para actualizar user info (wrapper del genérico)
+  async updateUserInfo(userInfo: UserInfo): Promise<boolean> {
+    // Obtener datos actuales para preservar estructura
+    const currentResult = await this.getFile(DropboxService.FILES.USER_JSON);
+    let currentData: UserJsonData = currentResult.data || {
+      profile: { name: "Usuario", edad: 30 }
+    };
 
-    return this.userService.updateUserInfo(accessToken, userInfo, allergies, favorites);
+    // Actualizar con nueva información
+    const updatedData: UserJsonData = {
+      ...currentData,
+      profile: {
+        ...currentData.profile,
+        name: userInfo.nombre
+      },
+      allergies: userInfo.allergies,
+      favorites: userInfo.favorites
+    };
+
+    const result = await this.updateFile(DropboxService.FILES.USER_JSON, updatedData);
+    return result.success;
   }
 
-  // Get user allergies from JSON
-  async getUserAllergies(): Promise<Record<string, { avoid: boolean }> | null> {
-    const accessToken = await this.ensureValidToken();
-    if (!accessToken) {
-      throw new Error('Not authenticated');
-    }
-
-    return this.userService.getUserAllergies(accessToken);
+  // Crear archivo de usuario por defecto
+  private async createDefaultUserFile(): Promise<void> {
+    const defaultData: UserJsonData = {
+      profile: {
+        name: "Usuario",
+        edad: 30
+      }
+    };
+    
+    await this.updateFile(DropboxService.FILES.USER_JSON, defaultData);
   }
 
-  // Get user favorites from JSON
-  async getUserFavorites(): Promise<Record<string, { status: 'heart' | 'thumb-down' }> | null> {
-    const accessToken = await this.ensureValidToken();
-    if (!accessToken) {
-      throw new Error('Not authenticated');
-    }
-
-    return this.userService.getUserFavorites(accessToken);
+  // Transformar UserJsonData a UserInfo
+  private transformUserJsonToUserInfo(data: UserJsonData): UserInfo {
+    return {
+      nombre: data.profile.name,
+      allergies: data.allergies || {},
+      favorites: data.favorites || {}
+    };
   }
 }
 

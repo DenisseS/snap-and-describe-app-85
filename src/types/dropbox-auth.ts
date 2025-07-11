@@ -6,6 +6,8 @@ export interface DropboxConfig {
 
 export interface UserInfo {
   nombre: string;
+  allergies?: Record<string, { avoid: boolean }>;
+  favorites?: Record<string, { status: 'heart' | 'thumb-down' }>;
 }
 
 // Estructura interna del JSON en Dropbox
@@ -23,4 +25,11 @@ export interface TokenData {
   access_token: string;
   refresh_token?: string;
   expires_at: number;
+}
+
+// Metadata para cache genérico
+export interface FileMetadata {
+  client_modified?: string;
+  last_sync?: string;
+  sync_status: 'synced' | 'pending' | 'error';
 }
