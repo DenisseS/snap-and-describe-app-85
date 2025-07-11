@@ -1,11 +1,10 @@
-
 import { DropboxConfig, UserInfo, UserJsonData, FileMetadata } from '../types/dropbox-auth';
 import { TokenManager } from './dropbox/TokenManager';
 import { DropboxAPI } from './dropbox/DropboxAPI';
 import { DropboxAuthService } from './dropbox/DropboxAuthService';
 import { DropboxFileManagerService } from './dropbox/DropboxFileManagerService';
 
-class DropboxService {
+class SessionService {
   private tokenManager: TokenManager;
   private api: DropboxAPI;
   private authService: DropboxAuthService;
@@ -323,5 +322,5 @@ class DropboxService {
   }
 }
 
-export default DropboxService;
+export default SessionService;
 export type { UserInfo };

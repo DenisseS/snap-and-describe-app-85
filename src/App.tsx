@@ -5,7 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { NavigationProvider } from "@/contexts/NavigationContext";
-import { DropboxAuthProvider } from "@/contexts/DropboxAuthContext";
+import { AuthProvider } from "@/contexts/AuthContext";
 import { PWAProvider } from "@/contexts/PWAContext";
 import Home from "./pages/Home";
 import ExplorePage from "./pages/ExplorePage";
@@ -24,7 +24,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <DropboxAuthProvider>
+        <AuthProvider>
           <NavigationProvider>
             <PWAProvider>
               <Routes>
@@ -40,7 +40,7 @@ const App = () => (
               </Routes>
             </PWAProvider>
           </NavigationProvider>
-        </DropboxAuthProvider>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

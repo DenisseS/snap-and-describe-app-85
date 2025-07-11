@@ -1,6 +1,5 @@
-
 import { DataState, UserProfile } from '@/types/userData';
-import DropboxService, { UserInfo as DropboxUserInfo } from './DropboxService';
+import SessionService, { UserInfo as DropboxUserInfo } from './SessionService';
 import { UserJsonData } from '@/types/dropbox-auth';
 
 // Tipos para el sistema de eventos
@@ -9,7 +8,7 @@ type EventListener = (data?: any) => void;
 
 class UserDataService {
   private static instance: UserDataService;
-  private dropboxService: DropboxService | null = null;
+  private sessionService: SessionService | null = null;
   
   // Constante para el archivo de usuario
   private static readonly USER_FILE_PATH = '/user.json';
@@ -32,10 +31,10 @@ class UserDataService {
     return UserDataService.instance;
   }
 
-  public setDropboxService(service: DropboxService): void {
-    if (!this.dropboxService) {
-      this.dropboxService = service;
-      console.log('📊 UserDataService: DropboxService configured');
+  public setDropboxService(service: SessionService): void {
+    if (!this.sessionService) {
+      this.sessionService = service;
+      console.log('📊 UserDataService: SessionService configured');
     }
   }
 
@@ -63,21 +62,18 @@ class UserDataService {
   public async getUserInfo(): Promise<DropboxUserInfo | null> {
     console.log('📊 UserDataService: Getting user info...');
     
-    if (!this.dropboxService) {
-      console.log('📊 UserDataService: DropboxService not configured');
+    if (!this.sessionService) {
+      console.log('📊 UserDataService: SessionService not configured');
       return null;
     }
 
-    const result = await this.dropboxService.getFile(UserDataService.USER_FILE_PATH);
+    const result = await this.sessionService.getFile(UserDataService.USER_FILE_PATH);
     
     if (!result.data) {
       // Si no hay archivo, crear uno por defecto
-      if (this.dropboxService.isAuthenticated()) {
-        await this.createDefaultUserFile();
-        const newResult = await this.dropboxService.getFile(UserDataService.USER_FILE_PATH);
-        return this.transformUserJsonToUserInfo(newResult.data);
-      }
-      return null;
+      await this.createDefaultUserFile();
+      const newResult = await this.sessionService.getFile(UserDataService.USER_FILE_PATH);
+      return this.transformUserJsonToUserInfo(newResult.data);
     }
 
     return this.transformUserJsonToUserInfo(result.data);
@@ -87,13 +83,13 @@ class UserDataService {
   public async updateUserInfo(userInfo: DropboxUserInfo): Promise<boolean> {
     console.log('📊 UserDataService: Updating user info...', userInfo);
     
-    if (!this.dropboxService) {
-      console.log('📊 UserDataService: DropboxService not configured');
+    if (!this.sessionService) {
+      console.log('📊 UserDataService: SessionService not configured');
       return false;
     }
 
     // Obtener datos actuales para preservar estructura
-    const currentResult = await this.dropboxService.getFile(UserDataService.USER_FILE_PATH);
+    const currentResult = await this.sessionService.getFile(UserDataService.USER_FILE_PATH);
     let currentData: UserJsonData = currentResult.data || {
       profile: { name: "Usuario", edad: 30 }
     };
@@ -109,13 +105,13 @@ class UserDataService {
       favorites: userInfo.favorites
     };
 
-    const result = await this.dropboxService.updateFile(UserDataService.USER_FILE_PATH, updatedData);
+    const result = await this.sessionService.updateFile(UserDataService.USER_FILE_PATH, updatedData);
     return result.success;
   }
 
   // Crear archivo de usuario por defecto
   private async createDefaultUserFile(): Promise<void> {
-    if (!this.dropboxService) return;
+    if (!this.sessionService) return;
     
     const defaultData: UserJsonData = {
       profile: {
@@ -124,7 +120,7 @@ class UserDataService {
       }
     };
     
-    await this.dropboxService.updateFile(UserDataService.USER_FILE_PATH, defaultData);
+    await this.sessionService.updateFile(UserDataService.USER_FILE_PATH, defaultData);
   }
 
   // Transformar UserJsonData a UserInfo

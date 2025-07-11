@@ -1,20 +1,19 @@
-
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import DropboxService, { UserInfo } from '../services/DropboxService';
+import SessionService, { UserInfo } from '../services/SessionService';
 import UserDataService from '../services/UserDataService';
 import { AuthState, AuthStateData } from '../types/auth';
 import { useUserCache } from '../hooks/useUserCache';
 import { useToast } from '@/hooks/use-toast';
 import { useTranslation } from 'react-i18next';
 
-interface DropboxAuthContextType {
+interface AuthContextType {
   // Estado centralizado - AuthState como única fuente de verdad
   authState: AuthState;
   userInfo: UserInfo | null;
   error: string | null;
   
   // Servicios
-  dropboxService: DropboxService;
+  sessionService: SessionService;
   
   // Acciones
   login: () => Promise<void>;
@@ -23,23 +22,23 @@ interface DropboxAuthContextType {
   refreshUserInfo: () => Promise<void>;
 }
 
-const DropboxAuthContext = createContext<DropboxAuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-interface DropboxAuthProviderProps {
+interface AuthProviderProps {
   children: ReactNode;
 }
 
-// Create a single instance of DropboxService
-const dropboxService = new DropboxService({
+// Create a single instance of SessionService
+const sessionService = new SessionService({
   clientId: import.meta.env.VITE_DROPBOX_CLIENT_ID || '',
   redirectUri: `${window.location.origin}/auth/callback`,
 });
 
-// Create UserDataService instance and configure it with DropboxService
+// Create UserDataService instance and configure it with SessionService
 const userDataService = UserDataService.getInstance();
-userDataService.setDropboxService(dropboxService);
+userDataService.setDropboxService(sessionService);
 
-export const DropboxAuthProvider: React.FC<DropboxAuthProviderProps> = ({ children }) => {
+export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [authState, setAuthState] = useState<AuthState>(AuthState.LOADING);
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +48,7 @@ export const DropboxAuthProvider: React.FC<DropboxAuthProviderProps> = ({ childr
   const { t } = useTranslation();
 
   const refreshUserInfo = useCallback(async () => {
-    const isAuth = dropboxService.isAuthenticated();
+    const isAuth = sessionService.isAuthenticated();
     
     if (!isAuth) {
       console.log('🔐 Auth: No authenticated, setting IDLE state');
@@ -84,7 +83,7 @@ export const DropboxAuthProvider: React.FC<DropboxAuthProviderProps> = ({ childr
       console.error('🔐 Auth: Error refreshing user info:', error);
       
       // Si hay error, verificar si es por desautenticación
-      if (!dropboxService.isAuthenticated()) {
+      if (!sessionService.isAuthenticated()) {
         // Usuario fue deslogueado automáticamente por el servicio
         console.log('🔐 Auth: User was automatically logged out by service');
         setUserInfo(null);
@@ -111,7 +110,7 @@ export const DropboxAuthProvider: React.FC<DropboxAuthProviderProps> = ({ childr
       setAuthState(AuthState.LOGGING_IN);
       setError(null);
       
-      await dropboxService.startAuth();
+      await sessionService.startAuth();
       // Note: El estado se actualizará cuando regrese del callback
     } catch (error) {
       console.error('🔐 Auth: Login error:', error);
@@ -127,7 +126,7 @@ export const DropboxAuthProvider: React.FC<DropboxAuthProviderProps> = ({ childr
       setError(null);
 
       // Limpiar datos del servicio
-      dropboxService.logout();
+      sessionService.logout();
       
       // Limpiar cache del usuario
       const cacheInfo = getUserCacheInfo();
@@ -162,7 +161,7 @@ export const DropboxAuthProvider: React.FC<DropboxAuthProviderProps> = ({ childr
         console.log('🔐 Auth: User info updated successfully');
       } else {
         // Si falla la actualización, verificar si el usuario fue deslogueado
-        if (!dropboxService.isAuthenticated()) {
+        if (!sessionService.isAuthenticated()) {
           console.log('🔐 Auth: User was logged out during update');
           setUserInfo(null);
           setAuthState(AuthState.IDLE);
@@ -179,7 +178,7 @@ export const DropboxAuthProvider: React.FC<DropboxAuthProviderProps> = ({ childr
       console.error('🔐 Auth: Error updating user info:', error);
       
       // Verificar si fue por desautenticación
-      if (!dropboxService.isAuthenticated()) {
+      if (!sessionService.isAuthenticated()) {
         console.log('🔐 Auth: User was logged out during update error');
         setUserInfo(null);
         setAuthState(AuthState.IDLE);
@@ -201,14 +200,14 @@ export const DropboxAuthProvider: React.FC<DropboxAuthProviderProps> = ({ childr
     refreshUserInfo();
   }, []);
 
-  const contextValue: DropboxAuthContextType = {
+  const contextValue: AuthContextType = {
     // Estado centralizado - solo AuthState como fuente de verdad
     authState,
     userInfo,
     error,
     
     // Servicios
-    dropboxService,
+    sessionService,
     
     // Acciones
     login,
@@ -218,16 +217,16 @@ export const DropboxAuthProvider: React.FC<DropboxAuthProviderProps> = ({ childr
   };
 
   return (
-    <DropboxAuthContext.Provider value={contextValue}>
+    <AuthContext.Provider value={contextValue}>
       {children}
-    </DropboxAuthContext.Provider>
+    </AuthContext.Provider>
   );
 };
 
-export const useDropboxAuth = (): DropboxAuthContextType => {
-  const context = useContext(DropboxAuthContext);
+export const useAuth = (): AuthContextType => {
+  const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useDropboxAuth must be used within a DropboxAuthProvider');
+    throw new Error('useAuth must be used within a AuthProvider');
   }
   return context;
 };

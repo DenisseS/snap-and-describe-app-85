@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useDropboxAuth } from "../hooks/useDropboxAuth";
@@ -7,7 +8,7 @@ import { useTranslation } from "react-i18next";
 const AuthCallback: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { dropboxService, refreshUserInfo } = useDropboxAuth();
+  const { sessionService, refreshUserInfo } = useDropboxAuth();
   const { t } = useTranslation();
   const [status, setStatus] = useState<"processing" | "success" | "error">("processing");
   const [error, setError] = useState<string>("");
@@ -52,7 +53,7 @@ const AuthCallback: React.FC = () => {
 
       try {
         console.log("🔐 AuthCallback: Processing callback with code verifier...");
-        const success = await dropboxService.handleCallback(code);
+        const success = await sessionService.handleCallback(code);
 
         if (success) {
           console.log("🔐 AuthCallback: Login successful, clearing user cache...");
