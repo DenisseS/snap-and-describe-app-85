@@ -1,6 +1,7 @@
 
 import { DataState, UserProfile } from '@/types/userData';
 import DropboxService, { UserInfo as DropboxUserInfo } from './DropboxService';
+import { UserJsonData } from '@/types/dropbox-auth';
 
 // Tipos para el sistema de eventos
 type UserDataEvent = 'profile-updated' | 'profile-sync-start' | 'profile-sync-end' | 'profile-error';
@@ -9,6 +10,9 @@ type EventListener = (data?: any) => void;
 class UserDataService {
   private static instance: UserDataService;
   private dropboxService: DropboxService | null = null;
+  
+  // Constante para el archivo de usuario
+  private static readonly USER_FILE_PATH = '/user.json';
   
   // Sistema de eventos reactivo
   private eventListeners: Map<UserDataEvent, Set<EventListener>> = new Map();
@@ -55,6 +59,83 @@ class UserDataService {
     });
   }
 
+  // Método para obtener información del usuario
+  public async getUserInfo(): Promise<DropboxUserInfo | null> {
+    console.log('📊 UserDataService: Getting user info...');
+    
+    if (!this.dropboxService) {
+      console.log('📊 UserDataService: DropboxService not configured');
+      return null;
+    }
+
+    const result = await this.dropboxService.getFile(UserDataService.USER_FILE_PATH);
+    
+    if (!result.data) {
+      // Si no hay archivo, crear uno por defecto
+      if (this.dropboxService.isAuthenticated()) {
+        await this.createDefaultUserFile();
+        const newResult = await this.dropboxService.getFile(UserDataService.USER_FILE_PATH);
+        return this.transformUserJsonToUserInfo(newResult.data);
+      }
+      return null;
+    }
+
+    return this.transformUserJsonToUserInfo(result.data);
+  }
+
+  // Método para actualizar información del usuario
+  public async updateUserInfo(userInfo: DropboxUserInfo): Promise<boolean> {
+    console.log('📊 UserDataService: Updating user info...', userInfo);
+    
+    if (!this.dropboxService) {
+      console.log('📊 UserDataService: DropboxService not configured');
+      return false;
+    }
+
+    // Obtener datos actuales para preservar estructura
+    const currentResult = await this.dropboxService.getFile(UserDataService.USER_FILE_PATH);
+    let currentData: UserJsonData = currentResult.data || {
+      profile: { name: "Usuario", edad: 30 }
+    };
+
+    // Actualizar con nueva información
+    const updatedData: UserJsonData = {
+      ...currentData,
+      profile: {
+        ...currentData.profile,
+        name: userInfo.nombre
+      },
+      allergies: userInfo.allergies,
+      favorites: userInfo.favorites
+    };
+
+    const result = await this.dropboxService.updateFile(UserDataService.USER_FILE_PATH, updatedData);
+    return result.success;
+  }
+
+  // Crear archivo de usuario por defecto
+  private async createDefaultUserFile(): Promise<void> {
+    if (!this.dropboxService) return;
+    
+    const defaultData: UserJsonData = {
+      profile: {
+        name: "Usuario",
+        edad: 30
+      }
+    };
+    
+    await this.dropboxService.updateFile(UserDataService.USER_FILE_PATH, defaultData);
+  }
+
+  // Transformar UserJsonData a UserInfo
+  private transformUserJsonToUserInfo(data: UserJsonData): DropboxUserInfo {
+    return {
+      nombre: data.profile.name,
+      allergies: data.allergies || {},
+      favorites: data.favorites || {}
+    };
+  }
+
   // Método principal para obtener perfil de usuario
   public async getUserProfile(): Promise<{
     data: UserProfile | null;
@@ -62,16 +143,8 @@ class UserDataService {
   }> {
     console.log('📊 UserDataService: Getting user profile...');
     
-    if (!this.dropboxService?.isAuthenticated()) {
-      console.log('📊 UserDataService: Not authenticated, returning null');
-      return {
-        data: null,
-        state: DataState.IDLE
-      };
-    }
-
     try {
-      const userInfo = await this.dropboxService.getUserInfo();
+      const userInfo = await this.getUserInfo();
       
       if (userInfo) {
         const profile: UserProfile = { 
@@ -104,21 +177,17 @@ class UserDataService {
   }> {
     console.log('📊 UserDataService: Updating profile...', profile);
     
-    if (!this.dropboxService?.isAuthenticated()) {
-      return { success: false, state: DataState.ERROR };
-    }
-
     try {
       this.emitEvent('profile-sync-start');
       
-      // Actualizar usando DropboxService con callback optimista
+      // Actualizar usando getUserInfo/updateUserInfo
       const dropboxUserInfo: DropboxUserInfo = { 
         nombre: profile.nombre,
         allergies: profile.allergies,
         favorites: profile.favorites
       };
       
-      const success = await this.dropboxService.updateUserInfo(dropboxUserInfo);
+      const success = await this.updateUserInfo(dropboxUserInfo);
       
       if (success) {
         // Emitir evento de actualización optimista
@@ -144,7 +213,7 @@ class UserDataService {
     console.log('📊 UserDataService: Sync failed, pulling real data from Dropbox...');
     
     try {
-      const realData = await this.dropboxService!.getUserInfo();
+      const realData = await this.getUserInfo();
       
       if (realData) {
         const realProfile: UserProfile = { 
@@ -164,25 +233,19 @@ class UserDataService {
     }
   }
 
-  // Limpiar cache - ahora delega a DropboxService
+  // Limpiar cache - solo claves de usuario
   public clearUserCache(): void {
     console.log('📊 UserDataService: Clearing user data cache...');
     
-    // Limpiar cache genérico de archivos de Dropbox
+    // Solo limpiar claves USER_ 
     const keys = Object.keys(localStorage);
-    const dropboxKeys = keys.filter(key => key.startsWith('DROPBOX_FILE_'));
-    
-    dropboxKeys.forEach(key => {
-      localStorage.removeItem(key);
-    });
-    
-    // También limpiar claves USER_ por compatibilidad
     const userKeys = keys.filter(key => key.startsWith('USER_'));
+    
     userKeys.forEach(key => {
       localStorage.removeItem(key);
     });
     
-    console.log(`📊 UserDataService: Cache cleared: ${dropboxKeys.length + userKeys.length} keys removed`);
+    console.log(`📊 UserDataService: Cache cleared: ${userKeys.length} keys removed`);
   }
 }
 

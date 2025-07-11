@@ -11,11 +11,6 @@ class DropboxService {
   private authService: DropboxAuthService;
   private fileManager: DropboxFileManagerService;
 
-  // Constantes para archivos
-  private static readonly FILES = {
-    USER_JSON: '/user.json'
-  };
-
   constructor(private config: DropboxConfig) {
     this.tokenManager = new TokenManager();
     this.api = new DropboxAPI(config);
@@ -325,67 +320,6 @@ class DropboxService {
   // Logout
   logout(): void {
     this.tokenManager.clearToken();
-  }
-
-  // Método específico para user info (wrapper del genérico)
-  async getUserInfo(): Promise<UserInfo | null> {
-    const result = await this.getFile(DropboxService.FILES.USER_JSON);
-    
-    if (!result.data) {
-      // Si no hay archivo, crear uno por defecto
-      if (this.isAuthenticated()) {
-        await this.createDefaultUserFile();
-        const newResult = await this.getFile(DropboxService.FILES.USER_JSON);
-        return this.transformUserJsonToUserInfo(newResult.data);
-      }
-      return null;
-    }
-
-    return this.transformUserJsonToUserInfo(result.data);
-  }
-
-  // Método específico para actualizar user info (wrapper del genérico)
-  async updateUserInfo(userInfo: UserInfo): Promise<boolean> {
-    // Obtener datos actuales para preservar estructura
-    const currentResult = await this.getFile(DropboxService.FILES.USER_JSON);
-    let currentData: UserJsonData = currentResult.data || {
-      profile: { name: "Usuario", edad: 30 }
-    };
-
-    // Actualizar con nueva información
-    const updatedData: UserJsonData = {
-      ...currentData,
-      profile: {
-        ...currentData.profile,
-        name: userInfo.nombre
-      },
-      allergies: userInfo.allergies,
-      favorites: userInfo.favorites
-    };
-
-    const result = await this.updateFile(DropboxService.FILES.USER_JSON, updatedData);
-    return result.success;
-  }
-
-  // Crear archivo de usuario por defecto
-  private async createDefaultUserFile(): Promise<void> {
-    const defaultData: UserJsonData = {
-      profile: {
-        name: "Usuario",
-        edad: 30
-      }
-    };
-    
-    await this.updateFile(DropboxService.FILES.USER_JSON, defaultData);
-  }
-
-  // Transformar UserJsonData a UserInfo
-  private transformUserJsonToUserInfo(data: UserJsonData): UserInfo {
-    return {
-      nombre: data.profile.name,
-      allergies: data.allergies || {},
-      favorites: data.favorites || {}
-    };
   }
 }
 
