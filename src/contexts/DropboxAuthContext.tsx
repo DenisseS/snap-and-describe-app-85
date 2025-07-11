@@ -1,6 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import DropboxService, { UserInfo } from '../services/DropboxService';
+import UserDataService from '../services/UserDataService';
 import { AuthState, AuthStateData } from '../types/auth';
 import { useUserCache } from '../hooks/useUserCache';
 import { useToast } from '@/hooks/use-toast';
@@ -34,6 +35,10 @@ const dropboxService = new DropboxService({
   redirectUri: `${window.location.origin}/auth/callback`,
 });
 
+// Create UserDataService instance and configure it with DropboxService
+const userDataService = UserDataService.getInstance();
+userDataService.setDropboxService(dropboxService);
+
 export const DropboxAuthProvider: React.FC<DropboxAuthProviderProps> = ({ children }) => {
   const [authState, setAuthState] = useState<AuthState>(AuthState.LOADING);
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
@@ -56,7 +61,7 @@ export const DropboxAuthProvider: React.FC<DropboxAuthProviderProps> = ({ childr
       console.log('🔐 Auth: Refreshing user info...');
       setError(null);
       
-      const userInfo = await dropboxService.getUserInfo();
+      const userInfo = await userDataService.getUserInfo();
       
       if (userInfo) {
         console.log('🔐 Auth: User info loaded successfully', userInfo);
@@ -151,7 +156,7 @@ export const DropboxAuthProvider: React.FC<DropboxAuthProviderProps> = ({ childr
   const updateUserInfo = useCallback(async (newUserInfo: UserInfo): Promise<boolean> => {
     try {
       console.log('🔐 Auth: Updating user info...', newUserInfo);
-      const success = await dropboxService.updateUserInfo(newUserInfo);
+      const success = await userDataService.updateUserInfo(newUserInfo);
       if (success) {
         setUserInfo(newUserInfo);
         console.log('🔐 Auth: User info updated successfully');
